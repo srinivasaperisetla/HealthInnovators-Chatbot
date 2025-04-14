@@ -1,103 +1,179 @@
-import Image from "next/image";
+'use client'
+import { Button } from "@/components/ui/button";
+
+import Sidebar from "./components/sidebar";
+import { HumanMessage, AIMessage } from "./components/chatMessages";
+import CameraPreview, { CameraPreviewHandles } from "./components/cameraPreview";
+import { useState, useEffect, useRef, useCallback } from "react";
+
+import {
+  Paperclip, 
+  ArrowUp,
+  UserRound,
+  Camera,
+  PanelLeft,
+} from "lucide-react";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const [showSplitView, setShowSplitView] = useState(false);
+
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const cameraRef = useRef<CameraPreviewHandles>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleTranscription = useCallback((transcription: string) => {
+    setMessages(prev => [...prev, { role: 'ai', text: transcription }]);
+  }, []);
+
+  return (
+    <div className="flex min-h-screen">
+
+      {/* Sidebar */}
+      <Sidebar isOpen={sidebarOpen} />
+
+      <div
+        className={`flex flex-col flex-1 min-h-screen transition-all duration-300 ${
+          sidebarOpen ? "ml-64" : ""
+        }`}
+      >
+
+        {/* Header */}
+        <header className="flex items-center justify-between p-4">
+
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-1 hover:bg-neutral-700 rounded-md transition"
+            >
+              <PanelLeft className="h-6 w-6 text-white" />
+            </button>
+            
+            <span className="text-lg font-semibold">Health Innovators AI Chatbot</span>
+          </div>
+
+          <nav className="flex items-center space-x-4">
+            <Button
+              variant="default"
+              className="flex items-center space-x-2 hover:bg-neutral-700"
+            >
+              <UserRound className="h-4 w-4 fill-current" />
+              <span>Login</span>
+            </Button>
+          </nav>
+
+        </header>
+
+        {/* Main Content */}
+        <main className="w-full flex flex-1 overflow-hidden">
+          {/* Left Split Panel with transition */}
+          <div
+            className={`${
+              showSplitView ? "w-1/2 opacity-100" : "w-0 opacity-0"
+            } transition-all duration-500 ease-in-out overflow-hidden border-r border-neutral-800 p-4 hidden md:block`}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <CameraPreview ref={cameraRef} onTranscription={handleTranscription}/>
+          </div>
+
+          {/* Right Chat Panel with transition */}
+          <div
+            className={`${
+              showSplitView ? "w-1/2" : "w-full"
+            } transition-all duration-500 ease-in-out flex justify-center`}
           >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+            <div className="w-full max-w-3xl h-[calc(96vh-160px)] overflow-y-auto px-4 py-8 space-y-4">
+              {messages.length === 0 ? (
+                <>
+                  <h1 className="mb-2 text-3xl font-bold sm:text-4xl">Hello there!</h1>
+                  <p className="mb-8 text-xl text-neutral-300">
+                    How can I help you today?
+                  </p>
+                </>
+              ) : (
+                messages.map((msg, idx) =>
+                  msg.role === "user" ? (
+                    <HumanMessage key={idx} text={msg.text} />
+                  ) : (
+                    <AIMessage key={idx} text={msg.text} />
+                  )
+                )
+              )}
+              <div ref={scrollRef} />
+            </div>
+          </div>
+        </main>
+
+
+
+        {/* Footer with Input */}
+        <footer className="p-4">
+          <div className="mx-auto w-full max-w-3xl">
+            <div className="rounded-2xl bg-[#2b2b2b] px-4 py-3 space-y-2">
+              
+              {/* Top Row: Input Field */}
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && inputValue.trim()) {
+                    setMessages((prev) => [
+                      ...prev,
+                      { role: "user", text: inputValue.trim() },
+                      { role: "ai", text: "This is a simulated AI reply." } // <-- add AI message here
+                    ]);
+                    setInputValue("");
+                  }
+                }}
+                placeholder="Send a message..."
+                className="w-full bg-transparent text-white placeholder:text-neutral-400 focus:outline-none"
+              />
+
+              {/* Bottom Row: Icons */}
+              <div className="flex items-center justify-between">
+                {/* Paperclip Icon (Left) */}
+                <div className="flex items-center space-x-2">
+                  <button className="p-1 hover:bg-neutral-700 rounded-md transition">
+                    <Paperclip className="h-5 w-5 text-zinc-400 hover:text-white" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setShowSplitView((prev) => !prev)
+                      cameraRef.current?.toggleCamera();
+                    }}
+                    className="p-1 hover:bg-neutral-700 rounded-md transition"
+                  >
+                    <Camera className="h-5 w-5 text-zinc-400 hover:text-white"/>
+                  </button>
+                </div>
+
+                {/* Send Icon (Right) */}
+                <button 
+                  className="rounded-full bg-zinc-400 hover:bg-white p-2 transition"
+                  onClick={() => {
+                    setMessages((prev) => [
+                      ...prev,
+                      { role: "user", text: inputValue.trim() },
+                      { role: "ai", text: "This is a simulated AI reply." } // <-- add AI message here
+                    ]);
+                    setInputValue("");
+                  }}
+                >
+                  <ArrowUp className="h-4 w-4 text-black" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </footer>
+
+      </div>
+
     </div>
   );
 }
