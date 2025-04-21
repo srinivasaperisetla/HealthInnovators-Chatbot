@@ -24,7 +24,7 @@ export default function Home() {
       const { email } = user;
       const { data, error } = await supabase
         .from('users')
-        .upsert({ email, password: '' }, { onConflict: ['email'] });
+        .upsert({ email, password: '' }, { onConflict: 'email' });
 
       if (error) console.error('Error saving user:', error);
     }
@@ -88,7 +88,7 @@ export default function Home() {
                 <Button
                   variant="default"
                   className="flex items-center space-x-2 hover:bg-neutral-700"
-                  onClick={() => logout({ returnTo: window.location.origin })}
+                  onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
                 >
                   <span>Logout</span>
                 </Button>
