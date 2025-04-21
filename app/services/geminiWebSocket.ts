@@ -1,4 +1,4 @@
-import { Base64 } from 'js-base64';
+// import { Base64 } from 'js-base64';
 import { TranscriptionService } from './transcriptionService';
 import { pcmToWav } from '../utils/audioUtils';
 
@@ -6,6 +6,86 @@ const MODEL = "models/gemini-2.0-flash-exp";
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const HOST = "generativelanguage.googleapis.com";
 const WS_URL = `wss://${HOST}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
+
+// Add proper types instead of any
+interface LightValues {
+  brightness: number;
+  colorTemperature: string;
+}
+
+async function setLightValues(brightness: number, colorTemp: string): Promise<LightValues> {
+  return {
+    brightness,
+    colorTemperature: colorTemp
+  };
+}
+
+// Add proper type for postal_code
+async function fetchDoctors(postal_code: string) {
+  try {
+    const res = await fetch('/api/nppes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ postal_code: postal_code }),
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch');
+
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.log(err);
+  }
+}
+
+const fetchDoctorsDeclaration = {
+  name: "getDoctorsFromPostalCode",
+  parameters: {
+    type: "OBJECT",
+    description: "fetch the doctors from a specific postal code",
+    properties: {
+      postal_code: {
+        type: "NUMBER",
+        description: "fetch the doctors from this postal code",
+      }
+    },
+    required: ["postal_code"],
+  },
+}
+
+const controlLightFunctionDeclaration = {
+  name: "controlLight",
+  parameters: {
+    type: "OBJECT",
+    description: "Set the brightness and color temperature of a room light.",
+    properties: {
+      brightness: {
+        type: "NUMBER",
+        description: "Light level from 0 to 100. Zero is off and 100 is full brightness.",
+      },
+      colorTemperature: {
+        type: "STRING",
+        description: "Color temperature of the light fixture which can be `daylight`, `cool` or `warm`.",
+      },
+    },
+    required: ["brightness", "colorTemperature"],
+  },
+};
+
+const functions = {
+  controlLight: ({ brightness, colorTemperature }: { brightness: number; colorTemperature: string }) => {
+    return setLightValues(brightness, colorTemperature);
+  },
+  getDoctorsFromPostalCode: ({ postal_code }: { postal_code : string; }) => {
+    return fetchDoctors(postal_code);
+  },
+  
+};
+
+// Remove unused system_instruction or use it
+// const system_instruction = "You are a medical assistant chatbot";
 
 export class GeminiWebSocket {
   private ws: WebSocket | null = null;
@@ -94,7 +174,11 @@ export class GeminiWebSocket {
         model: MODEL,
         generation_config: {
           response_modalities: ["AUDIO"] 
-        }
+        },
+        tools: {
+          functionDeclarations: [controlLightFunctionDeclaration, fetchDoctorsDeclaration],
+        },
+        // system_instruction: system_instruction
       }
     };
     this.ws?.send(JSON.stringify(setupMessage));
@@ -200,7 +284,7 @@ export class GeminiWebSocket {
     if (this.currentSource) {
       try {
         this.currentSource.stop();
-      } catch (e) {
+      } catch {
         // Ignore errors if already stopped
       }
       this.currentSource = null;
@@ -214,6 +298,49 @@ export class GeminiWebSocket {
   private async handleMessage(message: string) {
     try {
       const messageData = JSON.parse(message);
+
+      console.log("messageData: ",  messageData)
+      console.log(messageData.toolCall?.functionCalls)
+
+      if (messageData.toolCall?.functionCalls) {
+        // If the server sends multiple function calls in an array, handle them all
+        for (const funcCall of messageData.toolCall.functionCalls) {
+          if (funcCall.name === "controlLight") {
+            const { args, id } = funcCall;
+            // Call our actual JS function with the args
+            const result = await functions.controlLight(args);
+      
+            // Build a response object to send back
+            const responseMessage = {
+              functionResponse: {
+                name: "controlLight",
+                response: result,
+                id, // pass along the call's ID if needed
+              }
+            };
+            this.ws?.send(JSON.stringify(responseMessage));
+            console.log("[Tool Response]:", result);
+      
+            // If you only expect one function call at a time, you can return after
+            // processing the first. Otherwise, remove this return if you want to
+            // handle multiple calls in one message.
+            return;
+          }
+          else if(funcCall.name === "getDoctorsFromPostalCode"){
+            const { args, id } = funcCall;
+            const result = await functions.getDoctorsFromPostalCode(args);
+            const responseMessage = {
+              functionResponse: {
+                name: "getDoctorsFromPostalCode",
+                response: result,
+                id, // pass along the call's ID if needed
+              }
+            };
+            this.ws?.send(JSON.stringify(responseMessage));
+            console.log("[Tool Response]:", result);
+          }
+        }
+      }
       
       if (messageData.setupComplete) {
         this.isSetupComplete = true;
