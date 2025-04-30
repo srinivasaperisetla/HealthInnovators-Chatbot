@@ -1,12 +1,12 @@
 'use client'
 import { Button } from "@/components/ui/button";
-import { useAuth0 } from '@auth0/auth0-react';
 import { supabase } from './services/supabaseClient';
 
 import Sidebar from "./components/sidebar";
 import { HumanMessage, AIMessage } from "./components/chatMessages";
 import CameraPreview, { CameraPreviewHandles } from "./components/cameraPreview";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from 'next/navigation';
 
 import {
   Paperclip, 
@@ -17,18 +17,7 @@ import {
 } from "lucide-react";
 
 export default function Home() {
-  const { loginWithRedirect, logout, user, isAuthenticated } = useAuth0();
-
-  const saveUserToSupabase = async () => {
-    if (user) {
-      const { email } = user;
-      const { data, error } = await supabase
-        .from('users')
-        .upsert({ email, password: '' }, { onConflict: 'email' });
-
-      if (error) console.error('Error saving user:', error);
-    }
-  };
+  const [user, setUser] = useState<any>(null)
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
@@ -38,9 +27,15 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<CameraPreviewHandles>(null);
 
+  const router = useRouter();
+
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+  }, [])
 
   const handleTranscription = useCallback((transcription: string) => {
     setMessages(prev => [...prev, { role: 'ai', text: transcription }]);
@@ -73,27 +68,28 @@ export default function Home() {
           </div>
 
           <nav className="flex items-center space-x-4">
-            {!isAuthenticated ? (
-              <Button
-                variant="default"
-                className="flex items-center space-x-2 hover:bg-neutral-700"
-                onClick={() => loginWithRedirect()}
-              >
-                <UserRound className="h-4 w-4 fill-current" />
-                <span>Login</span>
-              </Button>
-            ) : (
-              <div className="flex items-center space-x-4">
-                <p>Welcome, {user?.email}</p>
-                <Button
-                  variant="default"
-                  className="flex items-center space-x-2 hover:bg-neutral-700"
-                  onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
-                >
-                  <span>Logout</span>
-                </Button>
-              </div>
-            )}
+          {user ? (
+            <Button
+              variant="default"
+              className="flex items-center space-x-2 hover:bg-neutral-700"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                location.reload();
+              }}
+            >
+              <UserRound className="h-4 w-4 fill-current" />
+              <span>Logout</span>
+            </Button>
+          ) : (
+            <Button
+              variant="default"
+              className="flex items-center space-x-2 hover:bg-neutral-700"
+              onClick={() => router.push('/signin')}
+            >
+              <UserRound className="h-4 w-4 fill-current" />
+              <span>Login</span>
+            </Button>
+          )}
           </nav>
 
         </header>
@@ -136,7 +132,6 @@ export default function Home() {
             </div>
           </div>
         </main>
-
 
 
         {/* Footer with Input */}
