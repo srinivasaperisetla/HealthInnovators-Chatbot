@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from './services/supabaseClient';
 
 import Sidebar from "./components/sidebar";
-import { HumanMessage, AIMessage } from "./components/chatMessages";
+import { HumanMessage, AIMessage, FunctionMessage } from "./components/chatMessages";
 import CameraPreview, { CameraPreviewHandles } from "./components/cameraPreview";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from 'next/navigation';
@@ -16,6 +16,26 @@ import {
   PanelLeft,
 } from "lucide-react";
 
+type Provider = {
+  number: string;
+  basic: { first_name: string; last_name: string };
+  addresses?: Array<{
+    address_purpose: string;
+    address_1?: string;
+    address_2?: string;
+    city?: string;
+    state?: string;
+    postal_code?: string;
+    telephone_number?: string;
+  }>;
+  taxonomies?: Array<{ code?: string; desc?: string; primary?: boolean | 'Y' | 'N' }>;
+};
+
+type ChatMessage =
+  | { role: 'user'; text: string }
+  | { role: 'ai'; text: string }
+  | { role: 'ai'; providers: Provider[] };
+
 export default function Home() {
   const [user, setUser] = useState<any>(null)
 
@@ -23,7 +43,7 @@ export default function Home() {
   const [inputValue, setInputValue] = useState("");
   const [showSplitView, setShowSplitView] = useState(false);
 
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<CameraPreviewHandles>(null);
 
@@ -41,11 +61,20 @@ export default function Home() {
     setMessages(prev => [...prev, { role: 'ai', text: transcription }]);
   }, []);
 
+  const handleToolResponse = useCallback((providers: Provider[]) => {
+    setMessages(prev => [
+      ...prev,
+      { role: 'ai', providers }
+    ]);
+  }, []);
+
+  const greetingName = (user?.email?.split('@')[0] ?? 'there') + '!';
+
   return (
     <div className="flex min-h-screen">
 
       {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} />
+      <Sidebar isOpen={sidebarOpen} user={user}/>
 
       <div
         className={`flex flex-col flex-1 min-h-screen transition-all duration-300 ${
@@ -102,7 +131,7 @@ export default function Home() {
               showSplitView ? "w-1/2 opacity-100" : "w-0 opacity-0"
             } transition-all duration-500 ease-in-out overflow-hidden border-r border-neutral-800 p-4 hidden md:block`}
           >
-            <CameraPreview ref={cameraRef} onTranscription={handleTranscription}/>
+            <CameraPreview ref={cameraRef} onTranscription={handleTranscription} onToolResponse={handleToolResponse}/>
           </div>
 
           {/* Right Chat Panel with transition */}
@@ -114,19 +143,22 @@ export default function Home() {
             <div className="w-full max-w-3xl h-[calc(96vh-160px)] overflow-y-auto px-4 py-8 space-y-4">
               {messages.length === 0 ? (
                 <>
-                  <h1 className="mb-2 text-3xl font-bold sm:text-4xl">Hello there!</h1>
+                  <h1 className="mb-2 text-3xl font-bold sm:text-4xl">Hello {greetingName}</h1>
                   <p className="mb-8 text-xl text-neutral-300">
                     How can I help you today?
                   </p>
                 </>
               ) : (
-                messages.map((msg, idx) =>
-                  msg.role === "user" ? (
-                    <HumanMessage key={idx} text={msg.text} />
-                  ) : (
-                    <AIMessage key={idx} text={msg.text} />
-                  )
-                )
+                messages.map((msg, idx) => {
+                  if ('providers' in msg) {
+                    // show the table/chart
+                    return <FunctionMessage key={idx} providers={msg.providers} />;
+                  }
+                  if (msg.role === 'user') {
+                    return <HumanMessage key={idx} text={msg.text} />;
+                  }
+                  return <AIMessage key={idx} text={msg.text} />;
+                })
               )}
               <div ref={scrollRef} />
             </div>

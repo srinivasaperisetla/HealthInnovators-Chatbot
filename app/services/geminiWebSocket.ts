@@ -1,11 +1,52 @@
-import { Base64 } from 'js-base64';
+// import { Base64 } from 'js-base64';
 import { TranscriptionService } from './transcriptionService';
 import { pcmToWav } from '../utils/audioUtils';
 
-const MODEL = "models/gemini-2.0-flash-exp";
+const MODEL = "models/gemini-2.0-flash-live-001";
 const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 const HOST = "generativelanguage.googleapis.com";
 const WS_URL = `wss://${HOST}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${API_KEY}`;
+
+async function fetchDoctors(city: string) {
+  console.log("city", city)
+  try {
+    const res = await fetch('/api/nppes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ city }),
+    });
+
+    if (!res.ok) throw new Error('Failed to fetch');
+
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.log(err);
+  }
+}
+
+const fetchDoctorsDeclaration = {
+  name: "getDoctorsFromCity",
+  parameters: {
+    type: "OBJECT",
+    description: "Fetch the doctors from a specific city",
+    properties: {
+      city: {
+        type: "STRING",
+        description: "Fetch the doctors from this city",
+      }
+    },
+    required: ["city"],
+  },
+}
+
+const functions = {
+  getDoctorsFromCity: ({ city }: { city: string }) => {
+    return fetchDoctors(city);
+  }
+};
 
 export class GeminiWebSocket {
   private ws: WebSocket | null = null;
@@ -26,18 +67,22 @@ export class GeminiWebSocket {
   private transcriptionService: TranscriptionService;
   private accumulatedPcmData: string[] = [];
 
+  private onToolResponseCallback: ((providers: any[]) => void) | null = null;
+
   constructor(
     onMessage: (text: string) => void, 
     onSetupComplete: () => void,
     onPlayingStateChange: (isPlaying: boolean) => void,
     onAudioLevelChange: (level: number) => void,
-    onTranscription: (text: string) => void
+    onTranscription: (text: string) => void,
+    onToolResponse: (providers: any[]) => void
   ) {
     this.onMessageCallback = onMessage;
     this.onSetupCompleteCallback = onSetupComplete;
     this.onPlayingStateChange = onPlayingStateChange;
     this.onAudioLevelChange = onAudioLevelChange;
     this.onTranscriptionCallback = onTranscription;
+    this.onToolResponseCallback = onToolResponse; 
     // Create AudioContext for playback
     this.audioContext = new AudioContext({
       sampleRate: 24000  // Match the response audio rate
@@ -94,6 +139,9 @@ export class GeminiWebSocket {
         model: MODEL,
         generation_config: {
           response_modalities: ["AUDIO"] 
+        },
+        tools: {
+          functionDeclarations: [fetchDoctorsDeclaration],
         }
       }
     };
@@ -214,48 +262,64 @@ export class GeminiWebSocket {
   private async handleMessage(message: string) {
     try {
       const messageData = JSON.parse(message);
-      
+  
+      // --- TOOL CALL HANDLING ---
+      if (messageData.toolCall?.functionCalls) {
+        for (const funcCall of messageData.toolCall.functionCalls) {
+          if (funcCall.name === "getDoctorsFromCity") {
+            const { args, id } = funcCall;
+            const result = await functions.getDoctorsFromCity(args);
+  
+            // This is the envelope Gemini expects:
+            const response = {
+              toolCallResponse: {
+                name: funcCall.name, // "getDoctorsFromCity"
+                id,                  // the same id Gemini sent you
+                arguments: result    // your fetched array/object
+              }
+            };
+            console.log("[Tool Response → Gemini]:", response);
+            this.onToolResponseCallback?.(result);
+          }
+        }
+        // Prevent falling through into audio logic for this packet
+        return;
+      }
+      // --- END TOOL CALL BLOCK ---
+  
+      // setupComplete, audio chunks, turnComplete, etc...
       if (messageData.setupComplete) {
         this.isSetupComplete = true;
         this.onSetupCompleteCallback?.();
         return;
       }
-
-      // Handle audio data
+  
       if (messageData.serverContent?.modelTurn?.parts) {
-        const parts = messageData.serverContent.modelTurn.parts;
-        for (const part of parts) {
+        for (const part of messageData.serverContent.modelTurn.parts) {
           if (part.inlineData?.mimeType === "audio/pcm;rate=24000") {
             this.accumulatedPcmData.push(part.inlineData.data);
             this.playAudioResponse(part.inlineData.data);
           }
         }
       }
-
-      // Handle turn completion separately
-      if (messageData.serverContent?.turnComplete === true) {
+  
+      if (messageData.serverContent?.turnComplete) {
         if (this.accumulatedPcmData.length > 0) {
           try {
-            const fullPcmData = this.accumulatedPcmData.join('');
-            const wavData = await pcmToWav(fullPcmData, 24000);
-            
-            const transcription = await this.transcriptionService.transcribeAudio(
-              wavData,
-              "audio/wav"
-            );
-            console.log("[Transcription]:", transcription);
-
+            const wavData = await pcmToWav(this.accumulatedPcmData.join(''), 24000);
+            const transcription = await this.transcriptionService.transcribeAudio(wavData, "audio/wav");
             this.onTranscriptionCallback?.(transcription);
-            this.accumulatedPcmData = []; // Clear accumulated data
-          } catch (error) {
-            console.error("[WebSocket] Transcription error:", error);
+            this.accumulatedPcmData = [];
+          } catch (e) {
+            console.error("[WebSocket] Transcription error:", e);
           }
         }
       }
-    } catch (error) {
-      console.error("[WebSocket] Error parsing message:", error);
+    } catch (e) {
+      console.error("[WebSocket] Error parsing message:", e);
     }
   }
+  
 
   disconnect() {
     this.isSetupComplete = false;

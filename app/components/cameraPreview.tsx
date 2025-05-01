@@ -10,8 +10,26 @@ import {
 import { GeminiWebSocket } from '../services/geminiWebSocket';
 import { Base64 } from 'js-base64';
 
+// types/nppes.ts
+type Provider = {
+  number: string;
+  basic: { first_name: string; last_name: string };
+  addresses?: Array<{
+    address_purpose: string;
+    address_1?: string;
+    address_2?: string;
+    city?: string;
+    state?: string;
+    postal_code?: string;
+    telephone_number?: string;
+  }>;
+  taxonomies?: Array<{ code?: string; desc?: string; primary?: boolean | 'Y' | 'N' }>;
+};
+
+
 interface CameraPreviewProps {
   onTranscription: (text: string) => void;
+  onToolResponse: (providers: Provider[]) => void;
 }
 
 export interface CameraPreviewHandle {
@@ -30,7 +48,7 @@ export interface CameraPreviewHandles {
 } 
 
 const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(
-  ({ onTranscription }, ref) => {
+  ({ onTranscription, onToolResponse }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const [isStreaming, setIsStreaming] = useState(false);
@@ -83,7 +101,8 @@ const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(
         (level) => {
           setOutputAudioLevel(level);
         },
-        onTranscription
+        onTranscription,
+        onToolResponse
       );
       geminiWsRef.current.connect();
 
@@ -96,7 +115,7 @@ const CameraPreview = forwardRef<CameraPreviewHandle, CameraPreviewProps>(
         setIsWebSocketReady(false);
         setConnectionStatus('disconnected');
       };
-    }, [isStreaming, onTranscription, cleanupWebSocket]);
+    }, [isStreaming, onTranscription, onToolResponse, cleanupWebSocket]);
 
     useEffect(() => {
       if (!isStreaming || !isWebSocketReady) return;
